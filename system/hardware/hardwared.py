@@ -66,6 +66,7 @@ def touch_thread(end_event):
   count = 0
 
   pm = messaging.PubMaster(["touch"])
+  params = Params()
 
   event_format = "llHHi"
   event_size = struct.calcsize(event_format)
@@ -74,9 +75,12 @@ def touch_thread(end_event):
   with open("/dev/input/by-path/platform-894000.i2c-event", "rb") as event_file:
     fcntl.fcntl(event_file, fcntl.F_SETFL, os.O_NONBLOCK)
     while not end_event.is_set():
+      # Check if touch input is disabled
+      touch_disabled = params.get_bool("DisableTouchInput")
+
       if (count % int(1. / DT_HW)) == 0:
         event = event_file.read(event_size)
-        if event:
+        if event and not touch_disabled:
           (sec, usec, etype, code, value) = struct.unpack(event_format, event)
           if etype != 0 or code != 0 or value != 0:
             touch = log.Touch.new_message()
@@ -92,6 +96,9 @@ def touch_thread(end_event):
             pm.send('touch', msg)
             event_frame = []
           continue
+        elif touch_disabled:
+          # Clear any pending event frame when touch is disabled
+          event_frame = []
 
       count += 1
       time.sleep(DT_HW)
